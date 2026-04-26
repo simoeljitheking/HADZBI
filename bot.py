@@ -13,8 +13,8 @@ from anthropic import Anthropic
 
 load_dotenv()
 
-API_ID = int(os.getenv('TELEGRAM_API_ID'))
-API_HASH = os.getenv('TELEGRAM_API_HASH')
+API_ID = int(os.getenv('TELEGRAM_API_ID') or os.getenv('API_ID'))
+API_HASH = os.getenv('TELEGRAM_API_HASH') or os.getenv('API_HASH')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 
 SESSION_STRING = os.getenv('SESSION_STRING', '')
