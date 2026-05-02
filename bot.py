@@ -95,6 +95,7 @@ TRIGGER_KEYWORDS = [
 
 conversation_history = {}
 conversation_count: dict[int, int] = {}
+processed_message_ids: set[int] = set()
 MAX_MESSAGES_PER_USER = 10
 cooldown_groups = {}
 group_post_history: dict[int, float] = {}
@@ -380,6 +381,10 @@ async def handle_message(event):
         message_text = event.message.message
         if not message_text or len(message_text.strip()) < 3:
             return
+
+        if event.message.id in processed_message_ids:
+            return
+        processed_message_ids.add(event.message.id)
 
         is_dm = event.is_private
 
