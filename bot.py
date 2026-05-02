@@ -401,7 +401,7 @@ async def handle_message(event):
                 print(f"[DM] Limit reached for {sender.first_name}, ignoring.")
                 return
             conversation_count[sender.id] = count + 1
-            await asyncio.sleep(random.uniform(3, 8))
+            await asyncio.sleep(random.uniform(5, 12))
             async with client.action(event.chat_id, 'typing'):
                 reply = await get_ai_response(sender.id, message_text)
                 await asyncio.sleep(random.uniform(2, 5))
