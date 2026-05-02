@@ -94,15 +94,21 @@ TRIGGER_KEYWORDS = [
 ]
 
 conversation_history = {}
+conversation_count: dict[int, int] = {}
+MAX_MESSAGES_PER_USER = 10
 cooldown_groups = {}
 group_post_history: dict[int, float] = {}
 joined_today = 0
 joined_today_reset = 0.0
+dmed_users: set[int] = set()
+dms_sent_today = 0
+dms_reset_time = 0.0
 
 GROUP_REPLY_COOLDOWN = 120
 GROUP_POST_INTERVAL = 10800
 GROUP_POST_VARIANCE = 3600
 MAX_JOINS_PER_DAY = 5
+MAX_DMS_PER_DAY = 20
 
 INVITE_PATTERN = re.compile(r'(?:https?://)?t\.me/(?:joinchat/|\+)([a-zA-Z0-9_-]+)|(?:https?://)?t\.me/([a-zA-Z0-9_]+)')
 
@@ -213,6 +219,105 @@ async def try_join_from_link(link: str):
         print(f"[JOIN] Failed to join {link}: {e}")
 
 
+async def generate_opening_dm(language: str) -> str | None:
+    """Generate a natural opening DM to send to a girl in a group."""
+    try:
+        response = anthropic.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            system=SYSTEM_PROMPT,
+            messages=[{
+                "role": "user",
+                "content": f"Write a short casual opening DM in {language} to a girl who posts content online. Ask if she is open to new ways to make money. Do not mention CraveRooms yet. Sound like a real girl texting, max 2 sentences."
+            }]
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        print(f"DM generation error: {e}")
+        return None
+
+
+async def targeted_dm_sender():
+    """Scans active posters in joined groups and sends them opening DMs."""
+    global dms_sent_today, dms_reset_time
+
+    await asyncio.sleep(300)  # wait 5 min after start
+
+    while True:
+        try:
+            now = asyncio.get_event_loop().time()
+
+            # Reset daily DM counter every 24h
+            if now - dms_reset_time > 86400:
+                dms_sent_today = 0
+                dms_reset_time = now
+
+            if dms_sent_today >= MAX_DMS_PER_DAY:
+                print(f"[DM] Daily limit reached ({MAX_DMS_PER_DAY}), waiting...")
+                await asyncio.sleep(3600)
+                continue
+
+            me = await client.get_me()
+
+            async for dialog in client.iter_dialogs():
+                if not dialog.is_group and not dialog.is_channel:
+                    continue
+                if dms_sent_today >= MAX_DMS_PER_DAY:
+                    break
+
+                try:
+                    # Collect recent active posters
+                    recent_posters: list[tuple] = []
+                    async for msg in client.iter_messages(dialog.entity, limit=50):
+                        if not msg.sender_id or msg.sender_id == me.id:
+                            continue
+                        sender = await msg.get_sender()
+                        if not isinstance(sender, User):
+                            continue
+                        if sender.bot or sender.id in dmed_users:
+                            continue
+                        if not msg.text:
+                            continue
+                        lang = detect_language(msg.text)
+                        recent_posters.append((sender, lang))
+
+                    # Deduplicate by user id
+                    seen = set()
+                    unique_posters = []
+                    for poster, lang in recent_posters:
+                        if poster.id not in seen:
+                            seen.add(poster.id)
+                            unique_posters.append((poster, lang))
+
+                    for user, language in unique_posters[:3]:  # max 3 per group per cycle
+                        if dms_sent_today >= MAX_DMS_PER_DAY:
+                            break
+
+                        opening = await generate_opening_dm(language)
+                        if not opening:
+                            continue
+
+                        await asyncio.sleep(random.uniform(60, 180))  # 1-3 min between DMs
+
+                        await client.send_message(user, opening)
+                        dmed_users.add(user.id)
+                        dms_sent_today += 1
+                        print(f"[DM-OUT] Sent to {user.first_name} from '{dialog.name}' in {language} ({dms_sent_today}/{MAX_DMS_PER_DAY}): {opening[:50]}...")
+
+                except FloodWaitError as e:
+                    print(f"[DM-OUT] FloodWait {e.seconds}s")
+                    await asyncio.sleep(e.seconds)
+                except Exception as e:
+                    print(f"[DM-OUT] Error in group {dialog.name}: {e}")
+
+                await asyncio.sleep(random.uniform(20, 60))
+
+        except Exception as e:
+            print(f"[DM-OUT] Outer error: {e}")
+
+        await asyncio.sleep(3600)  # run cycle every hour
+
+
 async def organic_group_poster():
     """Periodically posts in joined groups to spark conversation."""
     await asyncio.sleep(60)  # wait 1 min after start before first post
@@ -286,11 +391,16 @@ async def handle_message(event):
                 asyncio.create_task(try_join_from_link(full_link))
 
         if is_dm:
-            await asyncio.sleep(random.uniform(2, 5))
+            count = conversation_count.get(sender.id, 0)
+            if count >= MAX_MESSAGES_PER_USER:
+                print(f"[DM] Limit reached for {sender.first_name}, ignoring.")
+                return
+            conversation_count[sender.id] = count + 1
+            await asyncio.sleep(random.uniform(20, 90))
             reply = await get_ai_response(sender.id, message_text)
             if reply:
                 await event.reply(reply)
-                print(f"[DM] Replied to {sender.first_name}: {reply[:60]}...")
+                print(f"[DM] Replied to {sender.first_name} ({count+1}/{MAX_MESSAGES_PER_USER}): {reply[:60]}...")
 
         else:
             if not has_trigger(message_text):
@@ -304,7 +414,7 @@ async def handle_message(event):
                     return
 
             cooldown_groups[chat_id] = now
-            await asyncio.sleep(random.uniform(5, 15))
+            await asyncio.sleep(random.uniform(30, 90))
 
             reply = await get_ai_response(sender.id, message_text)
             if reply:
@@ -325,7 +435,8 @@ async def main():
 
     await asyncio.gather(
         client.run_until_disconnected(),
-        organic_group_poster()
+        organic_group_poster(),
+        targeted_dm_sender()
     )
 
 
