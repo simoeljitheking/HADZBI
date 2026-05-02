@@ -229,7 +229,7 @@ async def generate_opening_dm(language: str) -> str | None:
             system=SYSTEM_PROMPT,
             messages=[{
                 "role": "user",
-                "content": f"Write a short casual opening DM in {language} to a girl who posts content online. Ask if she is open to new ways to make money. Do not mention CraveRooms yet. Sound like a real girl texting, max 2 sentences."
+                "content": f"Write a short casual opening DM in English to a girl who posts content online. Ask if she is open to new ways to make money. Do not mention CraveRooms yet. Sound like a real girl texting, max 2 sentences. Only use {language} if it is Spanish or French, otherwise always use English."
             }]
         )
         return response.content[0].text.strip()
