@@ -56,25 +56,43 @@ Rules:
 - Sound human at all times
 - Always bring the conversation back to CraveRooms and signing up"""
 
-# ── System prompt for organic group posts ────────────────────────────────────
-GROUP_POST_PROMPT = """You are Mia, a real girl in a creator community group on Telegram.
+# ── Pre-written organic group posts ──────────────────────────────────────────
+GROUP_POSTS_EN = [
+    "does anyone here know a platform where clients book and pay upfront for private calls? tired of chasing payments after",
+    "okay so i just got paid before even getting on the call, client booked through craverooms and the money was already there 😭 this is the way",
+    "what platforms are you girls using besides OF? looking for something where clients actually pay before the session",
+    "started getting bookings on craverooms last month and honestly the clients there don't waste your time, they pay upfront",
+    "anyone else feel like OF takes too much? been looking at platforms with direct video call bookings",
+    "genuine question — how do you girls deal with clients who waste your time? i switched to upfront booking and it changed everything",
+    "craverooms has been lowkey good for me, clients book a time slot and pay before the call even starts",
+    "tired of free chatters lol, anyone know where to find clients who actually book and pay?",
+]
 
-LANGUAGE RULE: You will be given the language to write in. Write ENTIRELY in that language.
+GROUP_POSTS_ES = [
+    "alguien sabe de alguna plataforma donde los clientes paguen antes de la llamada? cansada de cobrar después",
+    "acabo de recibir un pago antes de conectarme a la llamada, el cliente reservó en craverooms y el dinero ya estaba 😭 así es como debe ser",
+    "qué plataformas usan además de OF? busco algo donde los clientes paguen antes de la sesión",
+    "empecé a recibir reservas en craverooms el mes pasado y los clientes ahí no pierden el tiempo, pagan por adelantado",
+    "pregunta seria — cómo manejan a los clientes que solo chatean gratis? yo cambié a reservas anticipadas y fue un cambio total",
+    "craverooms ha sido bueno para mí, los clientes reservan y pagan antes de que empiece la llamada",
+    "cansada de los que solo quieren chatear gratis lol, alguien sabe dónde encontrar clientes que realmente reserven?",
+]
 
-Your goal: Post a casual message that naturally leads to mentioning CraveRooms without it looking like an ad.
+GROUP_POSTS_IT = [
+    "qualcuna conosce una piattaforma dove i clienti pagano prima della chiamata? stanca di rincorrere i pagamenti",
+    "ho appena ricevuto un pagamento prima ancora di connettermi alla chiamata, il cliente ha prenotato su craverooms e i soldi erano già lì 😭",
+    "che piattaforme usate oltre OF? cerco qualcosa dove i clienti paghino prima della sessione",
+    "ho iniziato a ricevere prenotazioni su craverooms il mese scorso e i clienti lì non perdono tempo, pagano in anticipo",
+    "stanca di chi chatta gratis lol, qualcuna sa dove trovare clienti che prenotano davvero?",
+]
 
-Strategy — pick ONE of these approaches randomly:
-1. Ask for advice: "does anyone know a good platform where clients can book private video calls directly? tired of OF taking so much"
-2. Share a win: "okay so i just got paid for a booking before even getting on the call, the client paid upfront, this is the way"
-3. Ask what others use: "what platforms are you girls using besides OF? looking for something with direct client bookings"
-4. Drop a casual mention: "started using CraveRooms last month for direct bookings and honestly the clients there pay without drama"
-
-Rules:
-- Sound like a real girl texting in a group chat
-- Never use hashtags or promotional language
-- Keep it short, 1-2 sentences max
-- If mentioning CraveRooms directly, do it casually not as an advertisement
-- No bullet points, no lists, no formal language"""
+GROUP_POSTS_FR = [
+    "quelqu'un connaît une plateforme où les clients paient avant l'appel? marre de courir après les paiements",
+    "je viens de recevoir un paiement avant même de me connecter à l'appel, le client a réservé sur craverooms et l'argent était déjà là 😭",
+    "vous utilisez quoi en dehors de OF? je cherche quelque chose où les clients paient avant la session",
+    "j'ai commencé à avoir des réservations sur craverooms le mois dernier et les clients là-bas ne perdent pas de temps, ils paient à l'avance",
+    "fatiguée des chatteurs gratuits lol, quelqu'un sait où trouver des clients qui réservent vraiment?",
+]
 
 TRIGGER_KEYWORDS = [
     # English
@@ -104,12 +122,18 @@ joined_today_reset = 0.0
 dmed_users: set[int] = set()
 dms_sent_today = 0
 dms_reset_time = 0.0
+commented_posts: set[int] = set()
+comments_sent_today = 0
+comments_reset_time = 0.0
+channel_comment_history: dict[int, float] = {}
 
 GROUP_REPLY_COOLDOWN = 120
 GROUP_POST_INTERVAL = 10800
 GROUP_POST_VARIANCE = 3600
 MAX_JOINS_PER_DAY = 5
 MAX_DMS_PER_DAY = 20
+MAX_COMMENTS_PER_DAY = 15
+COMMENT_CHANNEL_COOLDOWN = 7200  # 2h between comments per channel
 
 INVITE_PATTERN = re.compile(r'(?:https?://)?t\.me/(?:joinchat/|\+)([a-zA-Z0-9_-]+)|(?:https?://)?t\.me/([a-zA-Z0-9_]+)')
 
@@ -158,19 +182,16 @@ async def get_ai_response(user_id: int, message: str) -> str | None:
     return reply
 
 
-async def generate_group_post(language: str) -> str | None:
-    """Generate an organic-sounding group post in the detected language."""
-    try:
-        response = anthropic.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=100,
-            system=GROUP_POST_PROMPT,
-            messages=[{"role": "user", "content": f"Write a casual group message in {language}."}]
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        print(f"Post generation error: {e}")
-        return None
+def generate_group_post(language: str) -> str:
+    """Pick a random pre-written group post in the detected language."""
+    if language == 'Spanish':
+        return random.choice(GROUP_POSTS_ES)
+    elif language == 'French':
+        return random.choice(GROUP_POSTS_FR)
+    elif language == 'Italian':
+        return random.choice(GROUP_POSTS_IT)
+    else:
+        return random.choice(GROUP_POSTS_EN)
 
 
 async def try_join_from_link(link: str):
@@ -236,6 +257,110 @@ async def generate_opening_dm(language: str) -> str | None:
     except Exception as e:
         print(f"DM generation error: {e}")
         return None
+
+
+COMMENT_PROMPT = """You are Mia, a real girl in a creator community on Telegram.
+
+LANGUAGE RULE: You will be given the language to write in. Write ENTIRELY in that language.
+
+Your goal: Leave a short casual comment on a channel post about cam girls or content creators. Sound like a real girl, not an ad.
+
+Strategy — pick ONE randomly:
+1. Ask a question: "anyone know if they accept new girls?" or "is the pay actually good there?"
+2. Share experience: "i switched to booking calls directly and honestly best decision, clients pay before and no drama"
+3. Mention CraveRooms casually: "i do the same on CraveRooms, clients book and pay upfront, way less stress"
+4. Relate naturally to what the post is about
+
+Rules:
+- Sound like a real girl leaving a quick comment
+- 1 sentence max, sometimes 2
+- No hashtags, no promotional language
+- Casual, like texting a friend
+- Never sound like an advertisement"""
+
+
+async def generate_channel_comment(language: str) -> str | None:
+    """Generate a natural comment for a channel post."""
+    try:
+        response = anthropic.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=80,
+            system=COMMENT_PROMPT,
+            messages=[{"role": "user", "content": f"Write a casual channel comment in {language}."}]
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        print(f"[COMMENT] Generation error: {e}")
+        return None
+
+
+async def channel_commenter():
+    """Comments on channel posts organically with human-like delays."""
+    global comments_sent_today, comments_reset_time
+
+    await asyncio.sleep(180)  # wait 3 min after start
+
+    while True:
+        try:
+            now = asyncio.get_event_loop().time()
+
+            if now - comments_reset_time > 86400:
+                comments_sent_today = 0
+                comments_reset_time = now
+
+            if comments_sent_today >= MAX_COMMENTS_PER_DAY:
+                print(f"[COMMENT] Daily limit reached ({MAX_COMMENTS_PER_DAY}), waiting...")
+                await asyncio.sleep(3600)
+                continue
+
+            async for dialog in client.iter_dialogs():
+                if not dialog.is_channel:
+                    continue
+                if comments_sent_today >= MAX_COMMENTS_PER_DAY:
+                    break
+
+                channel_id = dialog.id
+                last_comment = channel_comment_history.get(channel_id, 0)
+                if now - last_comment < COMMENT_CHANNEL_COOLDOWN:
+                    continue
+
+                try:
+                    async for msg in client.iter_messages(dialog.entity, limit=5):
+                        if not msg.text or msg.id in commented_posts:
+                            continue
+                        # Only comment if the post has comments enabled
+                        if not getattr(msg, 'replies', None):
+                            continue
+
+                        language = detect_language(msg.text)
+                        comment = await generate_channel_comment(language)
+                        if not comment:
+                            continue
+
+                        # 5–15 minute delay to look human
+                        delay = random.uniform(300, 900)
+                        print(f"[COMMENT] Waiting {delay:.0f}s before commenting on '{dialog.name}'...")
+                        await asyncio.sleep(delay)
+
+                        await client.send_message(dialog.entity, comment, comment_to=msg.id)
+                        commented_posts.add(msg.id)
+                        channel_comment_history[channel_id] = asyncio.get_event_loop().time()
+                        comments_sent_today += 1
+                        print(f"[COMMENT] Commented on '{dialog.name}': {comment[:60]}... ({comments_sent_today}/{MAX_COMMENTS_PER_DAY})")
+                        break  # one comment per channel per cycle
+
+                except FloodWaitError as e:
+                    print(f"[COMMENT] FloodWait {e.seconds}s")
+                    await asyncio.sleep(e.seconds)
+                except Exception as e:
+                    print(f"[COMMENT] Error in '{dialog.name}': {e}")
+
+                await asyncio.sleep(random.uniform(30, 60))
+
+        except Exception as e:
+            print(f"[COMMENT] Outer error: {e}")
+
+        await asyncio.sleep(1800)  # check every 30 min
 
 
 async def targeted_dm_sender():
@@ -349,7 +474,7 @@ async def organic_group_poster():
                 except Exception:
                     pass
 
-                post = await generate_group_post(language)
+                post = generate_group_post(language)
                 if post:
                     await asyncio.sleep(random.uniform(5, 20))
                     await client.send_message(dialog.entity, post)
@@ -443,7 +568,8 @@ async def main():
     await asyncio.gather(
         client.run_until_disconnected(),
         organic_group_poster(),
-        targeted_dm_sender()
+        targeted_dm_sender(),
+        channel_commenter()
     )
 
 
