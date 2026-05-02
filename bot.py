@@ -396,8 +396,10 @@ async def handle_message(event):
                 print(f"[DM] Limit reached for {sender.first_name}, ignoring.")
                 return
             conversation_count[sender.id] = count + 1
-            await asyncio.sleep(random.uniform(20, 90))
-            reply = await get_ai_response(sender.id, message_text)
+            await asyncio.sleep(random.uniform(3, 8))
+            async with client.action(event.chat_id, 'typing'):
+                reply = await get_ai_response(sender.id, message_text)
+                await asyncio.sleep(random.uniform(2, 5))
             if reply:
                 await event.reply(reply)
                 print(f"[DM] Replied to {sender.first_name} ({count+1}/{MAX_MESSAGES_PER_USER}): {reply[:60]}...")
